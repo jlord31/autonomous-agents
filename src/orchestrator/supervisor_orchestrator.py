@@ -44,13 +44,16 @@ class SupervisorOrchestrator:
             
             # Add tool information if available
             if hasattr(agent, 'tools') and agent.tools:
-                tools_desc = ", ".join([tool.get('name', 'Unknown Tool') for tool in agent.tools])
+                tools_desc = ", ".join([
+                    f"{tool.get('name')}: {tool.get('description')}" 
+                    for tool in agent.tools
+                ])
                 description += f" (Tools: {tools_desc})"
                 
             descriptions.append(description)
             
         return "\n".join(descriptions)
-    
+        
     def _parse_supervisor_plan(self, response_text: str) -> Dict[str, Any]:
         """Extract the execution plan from supervisor response"""
         try:

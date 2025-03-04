@@ -2,6 +2,8 @@ from typing import Dict, List
 from multi_agent_orchestrator.agents import ( BedrockLLMAgent, BedrockLLMAgentOptions)
 
 from orchestrator.supervisor_orchestrator import SupervisorOrchestrator
+from .ToolUsingBedrockLLMAgent import ToolUsingBedrockLLMAgent
+
 
 def load_llm_agents(agent_configs: List[Dict], orchestrator: SupervisorOrchestrator, bedrock_runtime) -> None:
     """
@@ -42,9 +44,12 @@ def load_llm_agents(agent_configs: List[Dict], orchestrator: SupervisorOrchestra
         # Handle tools if provided
         if "tools" in agent_config and agent_config["tools"]:
             agent_options.tools = agent_config["tools"]
-        
-        # Create the agent
-        agent = BedrockLLMAgent(agent_options)
+            
+            # Create a tool-using LLM agent if tools are provided
+            agent = ToolUsingBedrockLLMAgent(agent_options)
+        else:
+            # Create a standard LLM agent
+            agent = BedrockLLMAgent(agent_options)
         
         # Add to orchestrator
         orchestrator.add_agent(agent)

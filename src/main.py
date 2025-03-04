@@ -12,6 +12,7 @@ from utils.CreateLLMAgents import load_llm_agents
 from utils.CreateToolAgent import ToolAgent
 from multi_agent_orchestrator.agents import BedrockLLMAgent, BedrockLLMAgentOptions
 from multi_agent_orchestrator.types import ConversationMessage, ParticipantRole
+from tools.registry.index import get_tool_configs
 
 # Create simple math tool for demo purposes
 async def calculate(user_input: str, **kwargs) -> str:
@@ -65,6 +66,11 @@ async def main():
     # Initialize orchestrator
     orchestrator = SupervisorOrchestrator(supervisor_agent)
     
+    # Get all tool configs
+    all_tools = get_tool_configs()
+    email_tool = next((t for t in all_tools if t["name"] == "send_email"), None)
+
+
     # Define LLM agent configurations
     llm_agent_configs = [
         {
@@ -78,6 +84,13 @@ async def main():
             "description": "Helps with travel planning, hotel recommendations, and itinerary creation",
             "model_id": MODEL_ID,
             "streaming": False,
+        },
+        {
+            "name": "email_assistant",
+            "description": "Helps you compose and send emails, manage communication, and draft professional correspondence",
+            "model_id": MODEL_ID,
+            "streaming": False,
+            "tools": [email_tool] if email_tool else []
         }
     ]
     
