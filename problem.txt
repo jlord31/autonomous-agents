@@ -143,3 +143,411 @@ class BedrockClassifier(Classifier):
         except (BotoCoreError, ClientError) as error:
             Logger.error(f"Error processing request:{str(error)}")
             raise error
+
+
+// Example of how tools are created and mapped on the platform where I want to integrate this code
+// Although this is typescript, but it basically similar approach, 
+// Would this influence the way our CreateToolAgent is ?
+
+require("dotenv").config();
+const axios = require("axios");
+const yup = require("yup");
+const fs = require("fs");
+const yupToJsonSchema = require("./yupToJsonSchema");
+const endpoints = require("./endpoints");
+const { default: sendEmailToEmployee } = require("./node_mailer");
+
+const makeLeaveRequestSchema = yup.object({
+  email: yup.string().label("email").required("should be a valid email"),
+  start_date: yup.date().label("start_date").required("should be a date"),
+  end_date: yup.date().label("end_date").required("should be a date"),
+  reason: yup.string().label("reason").required("should be a string"),
+});
+const makeLeaveRequestJSONSchema = yupToJsonSchema(makeLeaveRequestSchema);
+const MAKE_LEAVE_REQUEST = {
+  name: "make_leave_request",
+  description: "makes a leave request",
+  category: "Employee Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: makeLeaveRequestJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async ({ email, start_date, end_date, reason }) => {
+    try {
+      const { data } = await axios.post(endpoints.LEAVE_REQUESTS.post, {
+        email,
+        start_date,
+        end_date,
+        reason,
+      });
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+
+const checkLeaveRequestStatusSchema = yup.object({
+  email: yup.string().label("email").required("should be a valid email"),
+});
+const checkLeaveRequestStatusJSONSchema = yupToJsonSchema(
+  checkLeaveRequestStatusSchema
+);
+const CHECK_LEAVE_REQUEST_STATUS = {
+  name: "check_leave_request_status",
+  description: "checks the status of a leave request",
+  category: "Employee Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: checkLeaveRequestStatusJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async ({ email }) => {
+    try {
+      const { data } = await axios.get(
+        `${endpoints.LEAVE_REQUESTS.getByEmployeeEmail}/${email}`
+      );
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+const checkCurrentDateSchema = yup.object({});
+const checkCurrentDateJSONSchema = yupToJsonSchema(checkCurrentDateSchema);
+const CHECK_CURRENT_DATE = {
+  name: "check_current_date",
+  description: "checks the current date",
+  category: "Employee Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: checkCurrentDateJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async () => {
+    const date = new Date();
+    return date.toISOString();
+  },
+};
+
+const checkShiftsSchema = yup.object({
+  email: yup.string().label("email").required("should be a valid email"),
+});
+const checkShiftsJSONSchema = yupToJsonSchema(checkShiftsSchema);
+
+const CHECK_SHIFTS = {
+  name: "check_shifts",
+  description: "checks employee's shifts",
+  category: "Employee Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: checkShiftsJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async ({ email }) => {
+    console.log(`${endpoints.SHIFTS.getByEmployeeEmail}/${email}`);
+    try {
+      const { data } = await axios.get(
+        `${endpoints.SHIFTS.getByEmployeeEmail}/${email}`
+      );
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+
+const getLeaveRequestsSchema = yup.object({
+  status: yup
+    .string()
+    .required()
+    .label("status")
+    .typeError("The status field must be a string")
+    .test("is-valid-status", "Invalid status", value => {
+      if (value) {
+        return ["pending", "approved", "rejected"].includes(value);
+      }
+      return true;
+    })
+});
+
+const getLeaveRequestsJSONSchema = yupToJsonSchema(getLeaveRequestsSchema);
+
+const GET_LEAVE_REQUESTS = {
+  name: "get_leave_requests",
+  description: "get all leave requests by status",
+  category: "Admin Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: getLeaveRequestsJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async ({ status }) => {
+    try {
+      const { data } = await axios.get(`${endpoints.LEAVE_REQUESTS.getByStatus}/${status}`);
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+
+const updateLeaveRequestSchema = yup.object({
+  id: yup.string().required().label("id"),
+  status: yup
+    .string()
+    .required()
+    .label("status")
+    .typeError("The status field must be a string")
+    .test("is-valid-status", "Invalid status", value => {
+      if (value) {
+        return ["approved", "rejected"].includes(value);
+      }
+      return true;
+    }),
+    email: yup.string().required().label("email")
+});
+
+const updateLeaveRequestJSONSchema = yupToJsonSchema(updateLeaveRequestSchema);
+
+const UPDATE_LEAVE_REQUEST = {
+  name: "update_leave_request",
+  description: "update a leave request status",
+  category: "Admin Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: updateLeaveRequestJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async ({ id, status , email}) => {
+    try {
+      const { data } = await axios.put(`${endpoints.LEAVE_REQUESTS.put}/${id}`, { status , email});
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+
+const sendMailToEmployeeSchema = yup.object({
+  recipient: yup.string().label("recipient"),
+  recipients: yup.array().label("recipients"),
+  subject: yup.string().required().label("subject"),
+  text: yup.string().required().label("text"),
+}).test('at-least-one-recipient', 'Either recipient or recipients must be provided', function (value) {
+  return value.recipient || (value.recipients && value.recipients.length > 0);
+});
+
+const sendMailToEmployeeJSONSchema = yupToJsonSchema(sendMailToEmployeeSchema);
+
+const SEND_MAIL_TO_EMPLOYEE = {
+  name: "send_mail_to_employee",
+  description: "send an email to an employee",
+  category: "Admin Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: sendMailToEmployeeJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async ({ recipient, recipients, subject, text }) => {
+    try {
+      const { data } = await sendEmailToEmployee({ recipient, recipients, subject, text });
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+const getAllShiftsSchema = yup.object({});
+const getAllShiftsJSONSchema = yupToJsonSchema(getAllShiftsSchema);
+const GET_ALL_SHIFTS = {
+  name: "get_all_shifts",
+  description: "get all shifts",
+  category: "Admin Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: getAllShiftsJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async () => {
+    try {
+      const { data } = await axios.get(endpoints.SHIFTS.get);
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+
+// {
+//   "email": "sullivanorjiude@gmail.com",
+//   "startTimeDate": "2024-05-24T10:00:00Z",
+//   "endTimeDate": "2024-05-24T13:00:00Z",
+//   "role": "Software Engineer",
+//   "description": "Code completion"
+// }
+
+const createShiftSchema = yup.object({
+  email: yup.string().label("email").required("should be a valid email"),
+  startTimeDate: yup.date().label("startTimeDate").required("should be a date"),
+  endTimeDate: yup.date().label("endTimeDate").required("should be a date"),
+  description: yup.string().label("description"),
+});
+
+const createShiftJSONSchema = yupToJsonSchema(createShiftSchema);
+
+const CREATE_SHIFT = {
+  name: "create_shift",
+  description: "create a shift",
+  category: "Admin Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: createShiftJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async ({ email, startTimeDate, endTimeDate, role, description }) => {
+    try {
+      const { data } = await axios.post(endpoints.SHIFTS.post, {
+        email,
+        startTimeDate,
+        endTimeDate,
+        role,
+        description
+      });
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+const getLeaveBalanceSchema = yup.object({
+  email: yup.string().label("email").required("should be a valid email"),
+});
+const getLeaveBalanceJSONSchema = yupToJsonSchema(getLeaveBalanceSchema);
+
+const GET_LEAVE_BALANCE = {
+  name: "get_leave_balance",
+  description: "get leave balance",
+  category: "Employee Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: getLeaveBalanceJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async ({ email }) => {
+    try {
+      const { data } = await axios.get(`${endpoints.LEAVE_ENTITLEMENTS.getByEmployeeEmail}/${email}`);
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+const getAllEmployeesSchema = yup.object({});
+const getAllEmployeesJSONSchema = yupToJsonSchema(getAllEmployeesSchema);
+const GET_ALL_EMPLOYEES = {
+  name: "get_all_employees",
+  description: "get all employees",
+  category: "Admin Tool",
+  subcategory: "communication",
+  functionType: "backend",
+  dangerous: false,
+  associatedCommands: [],
+  prerequisites: [],
+  parameters: getAllEmployeesJSONSchema,
+  rerun: true,
+  rerunWithDifferentParameters: true,
+  runCmd: async () => {
+    try {
+      const { data } = await axios.get(`${endpoints.EMPLOYEES.get}`);
+      return JSON.stringify(data);
+    } catch (err) {
+      return err.response.data || "Error trying to execute the tool";
+    }
+  },
+};
+const tools = [
+  MAKE_LEAVE_REQUEST,
+  CHECK_LEAVE_REQUEST_STATUS,
+  CHECK_SHIFTS,
+  CHECK_CURRENT_DATE,
+  GET_LEAVE_REQUESTS,
+  UPDATE_LEAVE_REQUEST,
+  GET_ALL_SHIFTS,
+  CREATE_SHIFT,
+  GET_LEAVE_BALANCE,
+  GET_ALL_EMPLOYEES,
+  // SEND_MAIL_TO_EMPLOYEE,
+];
+module.exports = tools;
+
+require("dotenv").config();
+const PORT = process.env.PORT || 8000;
+const express = require("express");
+const bodyParser = require("body-parser");
+const app = express();
+const tools = require("./tools");
+app.use(bodyParser.json());
+
+app.get("/cmnd-tools", (req, res) => {
+  const getTools = () => {
+    const toolsMapped = tools.map((t) => {
+      return {
+        name: t.name,
+        description: t.description,
+        jsonSchema: t.parameters,
+        isDangerous: t.dangerous,
+        functionType: t.functionType,
+        isLongRunningTool: t.isLongRunningTool,
+        rerun: t.rerun,
+        rerunWithDifferentParameters: t.rerunWithDifferentParameters,
+      };
+    });
+    return { tools: toolsMapped };
+  };
+
+  const toolsResponse = getTools();
+  res.json(toolsResponse);
+});
+
+app.post("/run-cmnd-tool", async (req, res) => {
+  const args = req.body;
+  const toolToRun = tools.find((t) => t.name === args.toolName);
+  const results = await toolToRun.runCmd(args.props);
+  res.send(results);
+});
+
+app.listen(PORT, () =>
+  console.log(`server running on PORT http://localhost:${PORT}`)
+);

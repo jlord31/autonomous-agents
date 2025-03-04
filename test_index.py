@@ -12,7 +12,7 @@ session = boto3.Session(region_name='eu-west-2')
 bedrock = session.client('bedrock')  # For listing models
 bedrock_runtime = session.client('bedrock-runtime')  # For inference
 
-from CustomOrchestrator import SimpleOrchestrator
+from src.orchestrator.CustomOrchestrator import SimpleOrchestrator
 
 import json
 import sys

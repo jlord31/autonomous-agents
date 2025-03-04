@@ -1,7 +1,7 @@
 from typing import Dict, List
 from multi_agent_orchestrator.agents import ( BedrockLLMAgent, BedrockLLMAgentOptions)
 
-from SupervisorOrchestrator import SupervisorOrchestrator
+from orchestrator.supervisor_orchestrator import SupervisorOrchestrator
 
 def load_llm_agents(agent_configs: List[Dict], orchestrator: SupervisorOrchestrator, bedrock_runtime) -> None:
     """

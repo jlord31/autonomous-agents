@@ -29,7 +29,7 @@ print(inspect.getdoc(BedrockLLMAgent.__init__))
 
 exit() """
 
-from CustomOrchestrator import SimpleOrchestrator
+from src.orchestrator.CustomOrchestrator import SimpleOrchestrator
 
 import json
 import sys
