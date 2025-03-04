@@ -33,7 +33,7 @@ def create_bedrock_client():
         # Use environment variables for credentials or default profile
         bedrock_runtime = boto3.client(
             service_name='bedrock-runtime',
-            region_name=os.environ.get('AWS_REGION', 'us-west-2')
+            region_name=os.environ.get('AWS_REGION')
         )
         return bedrock_runtime
     except Exception as e:
