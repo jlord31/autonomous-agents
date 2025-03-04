@@ -290,4 +290,4 @@ class SupervisorOrchestrator:
             output=final_response,
             metadata=metadata,
             streaming=False
-    )
+        )
