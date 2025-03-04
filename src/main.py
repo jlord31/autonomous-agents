@@ -7,9 +7,9 @@ import dotenv
 from dotenv import load_dotenv
 
 # Import our custom components
-from src.orchestrator.supervisor_orchestrator import SupervisorOrchestrator
-from src.utils.CreateLLMAgents import load_llm_agents
-from src.utils.CreateToolAgent import ToolAgent
+from orchestrator.supervisor_orchestrator import SupervisorOrchestrator
+from utils.CreateLLMAgents import load_llm_agents
+from utils.CreateToolAgent import ToolAgent
 from multi_agent_orchestrator.agents import BedrockLLMAgent, BedrockLLMAgentOptions
 from multi_agent_orchestrator.types import ConversationMessage, ParticipantRole
 
