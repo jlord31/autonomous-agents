@@ -48,7 +48,7 @@ from multi_agent_orchestrator.types import ConversationMessage, ParticipantRole
     MAX_MESSAGE_PAIRS_PER_AGENT=10
 ))  """
 from custom_classifier import DirectInvokeClassifier
-from BedrockLLMAgentCallbacks import BedrockLLMAgentCallbacks
+from utils.BedrockLLMAgentCallbacks import BedrockLLMAgentCallbacks
 
 # Just remove the CLASSIFIER parameter entirely
 orchestrator = SimpleOrchestrator(default_agent_name="tech_agent")

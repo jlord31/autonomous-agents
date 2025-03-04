@@ -3,7 +3,7 @@ from multi_agent_orchestrator.agents import ( BedrockLLMAgent, BedrockLLMAgentOp
 
 from SupervisorOrchestrator import SupervisorOrchestrator
 
-def load_agents_from_config(agent_configs: List[Dict], orchestrator: SupervisorOrchestrator, bedrock_runtime) -> None:
+def load_llm_agents(agent_configs: List[Dict], orchestrator: SupervisorOrchestrator, bedrock_runtime) -> None:
     """
     Load and create agents from a configuration array
     
@@ -36,7 +36,7 @@ def load_agents_from_config(agent_configs: List[Dict], orchestrator: SupervisorO
             # Dynamically import and instantiate callback class if needed
             # This is a simple version - you might need to adjust based on your actual callback classes
             if callback_class_name == "BedrockLLMAgentCallbacks":
-                from BedrockLLMAgentCallbacks import BedrockLLMAgentCallbacks
+                from utils.BedrockLLMAgentCallbacks import BedrockLLMAgentCallbacks
                 agent_options.callbacks = BedrockLLMAgentCallbacks()
         
         # Handle tools if provided
