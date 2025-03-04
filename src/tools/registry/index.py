@@ -22,6 +22,7 @@ def get_tool_configs() -> List[Dict[str, Any]]:
             "dangerous": getattr(tool_class, "dangerous", False),
             "type": "function",
             "module": tool_class.__module__,
+            "class": tool_class.__name__,
             "function": "run",
             "parameters": getattr(tool_class, "parameters", {}),
             "keywords": getattr(tool_class, "keywords", []),

@@ -14,19 +14,6 @@ from multi_agent_orchestrator.agents import BedrockLLMAgent, BedrockLLMAgentOpti
 from multi_agent_orchestrator.types import ConversationMessage, ParticipantRole
 from tools.registry.index import get_tool_configs
 
-# Create simple math tool for demo purposes
-async def calculate(user_input: str, **kwargs) -> str:
-    """Simple calculator function for demo purposes"""
-    try:
-        # Extract numbers and operations from the input
-        # This is a very simple implementation
-        # For a real app, use a proper expression parser
-        calculation = user_input.lower().replace('calculate', '').replace('what is', '').strip()
-        result = eval(calculation)  # Note: eval is unsafe for production use
-        return f"The result of {calculation} is {result}"
-    except Exception as e:
-        return f"Sorry, I couldn't calculate that. Error: {str(e)}"
-
 # Set up AWS clients
 def create_bedrock_client():
     """Create and configure Bedrock client"""
@@ -69,6 +56,7 @@ async def main():
     # Get all tool configs
     all_tools = get_tool_configs()
     email_tool = next((t for t in all_tools if t["name"] == "send_email"), None)
+    calculator_tools = [t for t in all_tools if t["name"] == "calculator"]
 
 
     # Define LLM agent configurations
@@ -99,32 +87,18 @@ async def main():
     
     # Define and create tool agents
     
-    calculator_agent_config = {
-        "name": "calculator",
-        "description": "Performs mathematical calculations",
-        "tools": [
-            {
-                "name": "basic_math",
-                "description": "Performs basic arithmetic operations",
-                "type": "function",
-                "module": "__main__",  # Using the calculate function defined in this file
-                "function": "calculate",
-                "keywords": ["calculate", "compute", "math", "+", "-", "*", "/"]
-            }
-        ]
-    }
-    
-    # Create and add tool agent
-    calculator_agent = ToolAgent(
-        calculator_agent_config["name"],
-        calculator_agent_config["description"],
-        calculator_agent_config["tools"]
-    )
-    orchestrator.add_agent(calculator_agent)
-    
-    # Simple CLI loop for interaction
-    print("Multi-agent system initialized! Type 'exit' to quit.")
-    print(f"Available agents: {orchestrator.list_agents()}")
+    if calculator_tools:
+        calculator_agent = ToolAgent(
+            name="calculator",
+            description="Performs mathematical calculations including arithmetic operations, equations, and unit conversions",
+            tools=calculator_tools
+        )
+        orchestrator.add_agent(calculator_agent)
+        print(f"Added agent: {calculator_agent.name}")
+        
+        # Simple CLI loop for interaction
+        print("Multi-agent system initialized! Type 'exit' to quit.")
+        print(f"Available agents: {orchestrator.list_agents()}")
     
     while True:
         user_input = input("\nYou: ")
