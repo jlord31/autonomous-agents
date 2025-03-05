@@ -1,5 +1,6 @@
 import json
 import re
+import asyncio
 from typing import Dict, List, Any, Optional
 from multi_agent_orchestrator.agents import Agent, AgentResponse, BedrockLLMAgent
 from multi_agent_orchestrator.types import ConversationMessage, ParticipantRole
@@ -109,6 +110,51 @@ class SupervisorOrchestrator:
         else:
             return str(response)
     
+    async def _process_agent_request(self, agent_name, query, user_id, session_id, output_var=None):
+        """Process a request to a specialist agent for parallel execution"""
+        agent = self.agents[agent_name]
+        agent_history = self._get_agent_history(session_id, agent_name)
+        
+        # Add query to agent history
+        agent_history.append(ConversationMessage(
+            role=ParticipantRole.USER,
+            content=[{"text": query}]
+        ))
+        
+        try:
+            print(f"Calling specialist agent (parallel): {agent_name}")
+            response = await agent.process_request(query, user_id, session_id, agent_history)
+            response_text = self._extract_response_text(response)
+            
+            # Create response data
+            response_data = {
+                'agent': agent_name,
+                'query': query,
+                'response': response_text
+            }
+            
+            # Update agent history
+            agent_history.append(ConversationMessage(
+                role=ParticipantRole.ASSISTANT,
+                content=[{"text": response_text}]
+            ))
+            
+            return {
+                'response_data': response_data,
+                'response_text': response_text,
+                'output_var': output_var
+            }
+        except Exception as e:
+            print(f"Error calling agent {agent_name}: {str(e)}")
+            return {
+                'response_data': {
+                    'agent': agent_name,
+                    'query': query,
+                    'error': str(e)
+                },
+                'output_var': output_var
+            }
+        
     async def route_request(self, user_input: str, user_id: str, session_id: str) -> AgentResponse:
         """Process user request through the supervisor architecture"""
         # Get session history
@@ -123,6 +169,54 @@ class SupervisorOrchestrator:
         # Generate dynamic agent descriptions
         agent_descriptions = self._create_agent_descriptions()
         
+        # Step 1: Create the non-variable parts of the message
+        json_template_option_a = r"""```json
+        {
+            "reasoning": "Your reasoning about the request",
+            "actions": [
+                {
+                    "type": "call_specialist",
+                    "agent": "agent1",
+                    "query": "Initial query",
+                    "step": 1,
+                    "output_var": "result1"
+                },
+                {
+                    "type": "parallel_group",
+                    "step": 2,
+                    "actions": [
+                        {
+                            "agent": "agent2",
+                            "query": "Process part of {{result1}}",
+                            "output_var": "result2a"
+                        },
+                        {
+                            "agent": "agent3",
+                            "query": "Process another part of {{result1}}",
+                            "output_var": "result2b"
+                        }
+                    ],
+                    "depends_on": ["result1"]
+                },
+                {
+                    "type": "condition",
+                    "step": 3,
+                    "condition": "{{result2a}} contains 'error'",
+                    "if_true": {
+                        "agent": "error_handler",
+                        "query": "Handle this error: {{result2a}}"
+                    },
+                    "if_false": {
+                        "agent": "agent4",
+                        "query": "Continue with {{result2a}} and {{result2b}}",
+                        "output_var": "result3"
+                    },
+                    "depends_on": ["result2a", "result2b"]
+                }
+            ]
+        }
+        ```"""
+        
         # Step 1: Send request to supervisor with planning instructions
         planning_input = f"""TASK: Determine how to handle this user request.
 
@@ -133,34 +227,24 @@ class SupervisorOrchestrator:
 
             INSTRUCTIONS:
             1. Analyze the user request
-            2. Decide which specialist agent(s) should handle this request or if you should handle it directly
-            3. Provide your plan as JSON with the following format:
-
+            2. Decide which specialist agent(s) should handle this request
+            3. Provide your plan as valid JSON with the following format (make sure to include all commas between properties):
+    
             Option A - If you need specialist agents:
+            {json_template_option_a}
+
             ```json
-            {{
-                "reasoning": "Your reasoning about the request",
-                "actions": [
-                    {{
-                    "type": "call_specialist",
-                    "agent": "agent_name",
-                    "query": "The specific query to send to this agent"
-                    }}
-                ]
-            }}
-            ```
-            
-            Option B - If you can handle directly:
-            ```json
-            {{
-                "reasoning": "Your reasoning about handling directly",
-                "actions": [
-                    {{
-                    "type": "supervisor_direct_response",
-                    "response": "Your direct response to the user"
-                    }}
-                ]
-            }}
+                Option B - If you can handle directly:
+                
+                {{
+                    "reasoning": "Your reasoning about handling directly",
+                    "actions": [
+                        {{
+                        "type": "supervisor_direct_response",
+                        "response": "Your direct response to the user"
+                        }}
+                    ]
+                }}
             ```
         """
         
@@ -171,7 +255,9 @@ class SupervisorOrchestrator:
 
         # Extract planning response text
         planning_text = self._extract_response_text(planning_response)
-
+        
+        print(f"RAW SUPERVISOR RESPONSE:\n{planning_text}")
+        
         # Parse the plan
         plan = self._parse_supervisor_plan(planning_text)
         print(f"Supervisor plan: {json.dumps(plan, indent=2)}")
@@ -179,6 +265,7 @@ class SupervisorOrchestrator:
         # Step 2: Execute the plan
         specialist_responses = []
         direct_response = None
+        intermediate_results = {} 
 
         for action in plan.get('actions', []):
             action_type = action.get('type')
@@ -233,7 +320,50 @@ class SupervisorOrchestrator:
                     print(f"Agent not found: {agent_name}")
 
                     # Step 3: Handle different result scenarios
-
+            
+            elif action_type == "parallel_group":
+                # Ensure dependencies are met
+                depends_on = action.get('depends_on', [])
+                
+                # Get the parallel tasks to execute
+                parallel_actions = action.get('actions', [])
+                
+                # Create tasks for parallel execution
+                parallel_tasks = []
+                
+                for parallel_action in parallel_actions:
+                    agent_name = parallel_action.get('agent')
+                    query = parallel_action.get('query', user_input)
+                    output_var = parallel_action.get('output_var')
+                    
+                    # Process variable substitutions
+                    if isinstance(query, str):
+                        for var_name in depends_on:
+                            if var_name in intermediate_results:
+                                query = query.replace(f"{{{{{var_name}}}}}", intermediate_results[var_name])
+                    
+                    if agent_name in self.agents:
+                        # Create task for parallel execution
+                        task = self._process_agent_request(
+                            agent_name, query, user_id, session_id, output_var
+                        )
+                        parallel_tasks.append(task)
+                
+                # Execute tasks in parallel
+                parallel_responses = await asyncio.gather(*parallel_tasks, return_exceptions=True)
+                
+                # Process results
+                for response in parallel_responses:
+                    if isinstance(response, Exception):
+                        print(f"Error in parallel execution: {str(response)}")
+                    else:
+                        # Add to specialist_responses
+                        specialist_responses.append(response['response_data'])
+                        
+                        # Store output variable if specified
+                        if 'output_var' in response and 'response_text' in response:
+                            intermediate_results[response['output_var']] = response['response_text']
+                        
         # Case 1: Direct response from supervisor
         if direct_response:
             final_response = direct_response

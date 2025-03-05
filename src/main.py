@@ -60,6 +60,7 @@ async def main():
 
 
     # Define LLM agent configurations
+    # Define LLM agent configurations - attach tools to LLM agents
     llm_agent_configs = [
         {
             "name": "tech_agent",
@@ -72,6 +73,13 @@ async def main():
             "description": "Helps with travel planning, hotel recommendations, and itinerary creation",
             "model_id": MODEL_ID,
             "streaming": False,
+        },
+        {
+            "name": "math_assistant",  
+            "description": "Performs mathematical calculations including arithmetic operations, equations, and unit conversions",
+            "model_id": MODEL_ID,
+            "streaming": False,
+            "tools": calculator_tools  
         },
         {
             "name": "email_assistant",
@@ -87,18 +95,18 @@ async def main():
     
     # Define and create tool agents
     
-    if calculator_tools:
-        calculator_agent = ToolAgent(
-            name="calculator",
-            description="Performs mathematical calculations including arithmetic operations, equations, and unit conversions",
-            tools=calculator_tools
-        )
-        orchestrator.add_agent(calculator_agent)
-        print(f"Added agent: {calculator_agent.name}")
+    # if calculator_tools:
+    #     calculator_agent = ToolAgent(
+    #         name="calculator",
+    #         description="Performs mathematical calculations including arithmetic operations, equations, and unit conversions",
+    #         tools=calculator_tools
+    #     )
+    #     orchestrator.add_agent(calculator_agent)
+    #     print(f"Added agent: {calculator_agent.name}")
         
-        # Simple CLI loop for interaction
-        print("Multi-agent system initialized! Type 'exit' to quit.")
-        print(f"Available agents: {orchestrator.list_agents()}")
+    #     # Simple CLI loop for interaction
+    #     print("Multi-agent system initialized! Type 'exit' to quit.")
+    #     print(f"Available agents: {orchestrator.list_agents()}")
     
     while True:
         user_input = input("\nYou: ")
