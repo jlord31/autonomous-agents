@@ -59,7 +59,6 @@ async def main():
     calculator_tools = [t for t in all_tools if t["name"] == "calculator"]
 
 
-    # Define LLM agent configurations
     # Define LLM agent configurations - attach tools to LLM agents
     llm_agent_configs = [
         {
@@ -92,21 +91,6 @@ async def main():
     
     # Load LLM agents
     load_llm_agents(llm_agent_configs, orchestrator, bedrock_runtime)
-    
-    # Define and create tool agents
-    
-    # if calculator_tools:
-    #     calculator_agent = ToolAgent(
-    #         name="calculator",
-    #         description="Performs mathematical calculations including arithmetic operations, equations, and unit conversions",
-    #         tools=calculator_tools
-    #     )
-    #     orchestrator.add_agent(calculator_agent)
-    #     print(f"Added agent: {calculator_agent.name}")
-        
-    #     # Simple CLI loop for interaction
-    #     print("Multi-agent system initialized! Type 'exit' to quit.")
-    #     print(f"Available agents: {orchestrator.list_agents()}")
     
     while True:
         user_input = input("\nYou: ")

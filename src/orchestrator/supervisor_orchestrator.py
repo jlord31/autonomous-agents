@@ -12,7 +12,8 @@ class SupervisorOrchestrator:
         self.agents = {}  # name -> agent
         self.chat_histories = {}  # session_id -> conversation history
         self.agent_histories = {}  # session_id -> {agent_name -> conversation history}
-    
+        self.last_active_agent = {}
+        
     def add_agent(self, agent: Agent) -> None:
         """Add a specialist agent to the orchestrator"""
         self.agents[agent.name] = agent
@@ -54,42 +55,66 @@ class SupervisorOrchestrator:
             descriptions.append(description)
             
         return "\n".join(descriptions)
-        
+
     def _parse_supervisor_plan(self, response_text: str) -> Dict[str, Any]:
-        """Extract the execution plan from supervisor response"""
+        """Extract the execution plan from supervisor response with better error handling"""
         try:
+            # Initialize empty plan - will be populated either by JSON parsing or fallback
+            plan = {"reasoning": "Extracted from text response", "actions": []}
+            json_parsed = False
+            
             # Look for JSON between ``` markers
-            json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+            json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response_text, re.DOTALL)
+            
+            if not json_match:
+                # Try to find standalone JSON
+                json_match = re.search(r'(\{\s*"reasoning".*\})', response_text, re.DOTALL)
+                
             if json_match:
                 plan_json = json_match.group(1)
-                return json.loads(plan_json)
-            
-            # If no structured JSON found, use simple agent name extraction
-            plan = {"reasoning": "Extracted from text response", "actions": []}
-            
-            # Look for any agent names mentioned in the response
-            for agent_name in self.agents.keys():
-                if agent_name.lower() in response_text.lower():
-                    # Found an agent reference, extract surrounding context as query
-                    agent_pos = response_text.lower().find(agent_name.lower())
-                    context_start = max(0, agent_pos - 100)
-                    context_end = min(len(response_text), agent_pos + 100)
-                    context = response_text[context_start:context_end]
-                    
-                    plan["actions"].append({
-                        "type": "call_specialist",
-                        "agent": agent_name,
-                        "query": context  # Use surrounding context as query
-                    })
-            
-            # If we didn't find any agent references but have text, 
-            # default to assuming the supervisor is giving a direct answer
-            if not plan["actions"] and response_text.strip():
-                plan["actions"].append({
-                    "type": "supervisor_direct_response",
-                    "response": response_text
-                })
                 
+                # Basic JSON error correction - fix common formatting issues
+                plan_json = re.sub(r'"\s*\n\s*"', '",\n"', plan_json)  # Add missing commas
+                # Add missing comma after object properties
+                plan_json = re.sub(r'"([^"]*)"(\s*)\}', r'"\1"\2}', plan_json)
+                # Add missing comma between properties 
+                plan_json = re.sub(r'"\s*"', '", "', plan_json)
+                
+                try:
+                    parsed_plan = json.loads(plan_json)
+                    plan = parsed_plan  # Replace the empty plan with parsed JSON
+                    json_parsed = True
+                    print("Successfully parsed supervisor JSON response")
+                except json.JSONDecodeError as e:
+                    print(f"JSON parsing failed: {str(e)}")
+                    # Continue with fallback methods
+            
+            # Only apply name scanning as fallback if JSON parsing failed
+            if not json_parsed:
+                print("Using fallback agent name detection")
+                # Look for any agent names mentioned in the response
+                for agent_name in self.agents.keys():
+                    if agent_name.lower() in response_text.lower():
+                        # Found an agent reference, extract surrounding context as query
+                        agent_pos = response_text.lower().find(agent_name.lower())
+                        context_start = max(0, agent_pos - 100)
+                        context_end = min(len(response_text), agent_pos + 100)
+                        context = response_text[context_start:context_end]
+                        
+                        plan["actions"].append({
+                            "type": "call_specialist",
+                            "agent": agent_name,
+                            "query": context  # Use surrounding context as query
+                        })
+                
+                # If we didn't find any agent references but have text, 
+                # default to assuming the supervisor is giving a direct answer
+                if not plan["actions"] and response_text.strip():
+                    plan["actions"].append({
+                        "type": "supervisor_direct_response",
+                        "response": response_text
+                    })
+                    
             return plan
         except Exception as e:
             print(f"Error parsing supervisor plan: {str(e)}")
@@ -165,6 +190,88 @@ class SupervisorOrchestrator:
             role=ParticipantRole.USER,
             content=[{"text": user_input}]
         ))
+        
+        # Check if this is a follow-up to a previous agent interaction
+        last_agent = self.last_active_agent.get(session_id)
+        
+        if last_agent and last_agent in self.agents:
+            
+            # Get the agent's capabilities
+            agent_capabilities = ""
+            
+            agent = self.agents[last_agent]
+            if hasattr(agent, 'description'):
+                agent_capabilities = agent.description
+            
+            # Include more context for accurate continuity determination
+            agent_history = self._get_agent_history(session_id, last_agent)
+            recent_exchanges = ""
+            
+            # Get the most recent exchange (last 2 messages if available)
+            if len(agent_history) >= 2:
+                user_msg = agent_history[-2].content[0].get("text", "") if agent_history[-2].content else ""
+                agent_msg = agent_history[-1].content[0].get("text", "") if agent_history[-1].content else ""
+                recent_exchanges = f"Last user message: {user_msg}\nLast agent response: {agent_msg}"
+
+    
+            # This could be a follow-up - ask the supervisor with better context
+            continuity_input = f"""TASK: Determine if this user message is a follow-up to the previous conversation with {last_agent}.
+
+                PREVIOUS AGENT: {last_agent}
+                AGENT CAPABILITIES: {agent_capabilities}
+
+                RECENT CONVERSATION:
+                {recent_exchanges}
+
+                NEW USER REQUEST: {user_input}
+
+                INSTRUCTIONS:
+                1. Read the previous agent response and user's new request carefully
+                2. Determine if the NEW REQUEST is directly related to what {last_agent} was helping with
+                3. Respond with ONLY "YES" if the same agent should continue the conversation
+                4. Respond with ONLY "NO" if this is a new topic or request better handled by a different agent
+            """
+            
+            continuity_response = await self.supervisor.process_request(
+                continuity_input, user_id, session_id, history[:-1]  
+            )
+            continuity_text = self._extract_response_text(continuity_response).strip().upper()
+                
+            if "YES" in continuity_text:
+                print(f"Continuing conversation with previous agent: {last_agent}")
+                # Direct the request to the previous agent
+                agent = self.agents[last_agent]
+                agent_history = self._get_agent_history(session_id, last_agent)
+                
+                # Add user query to agent history
+                agent_history.append(ConversationMessage(
+                    role=ParticipantRole.USER,
+                    content=[{"text": user_input}]
+                ))
+                
+                # Send to the agent
+                response = await agent.process_request(user_input, user_id, session_id, agent_history)
+                response_text = self._extract_response_text(response)
+                
+                # Update agent history
+                agent_history.append(ConversationMessage(
+                    role=ParticipantRole.ASSISTANT,
+                    content=[{"text": response_text}]
+                ))
+                
+                # Update main history
+                history.append(ConversationMessage(
+                    role=ParticipantRole.ASSISTANT,
+                    content=[{"text": response_text}]
+                ))
+                
+                # Return the response
+                return AgentResponse(
+                    output=response_text,
+                    metadata={"source": last_agent, "agent_count": 1, "plan": "Direct continuation"},
+                    streaming=False
+                )
+        
         
         # Generate dynamic agent descriptions
         agent_descriptions = self._create_agent_descriptions()
@@ -272,13 +379,20 @@ class SupervisorOrchestrator:
         
             # Handle direct response from supervisor
             if action_type == "supervisor_direct_response":
-                direct_response = action.get('response', '')
+                response_text = action.get('response', '')
+                # Process variable substitutions if needed
+                for var_name, var_value in intermediate_results.items():
+                    placeholder = f"{{{{{var_name}}}}}"
+                    if placeholder in response_text:
+                        response_text = response_text.replace(placeholder, var_value)
+                direct_response = response_text
                 continue
                 
             # Handle specialist agent calls
             elif action_type == "call_specialist":
                 agent_name = action.get('agent')
                 query = action.get('query', user_input)
+                output_var = action.get('output_var')
                 
                 if agent_name in self.agents:
                     # Get the agent and its history
@@ -304,6 +418,11 @@ class SupervisorOrchestrator:
                             'response': response_text
                         })
                         
+                        if output_var:
+                            intermediate_results[output_var] = response_text
+                            print(f"Stored result in variable {output_var}")
+            
+                        
                         # Update agent history
                         agent_history.append(ConversationMessage(
                             role=ParticipantRole.ASSISTANT,
@@ -319,8 +438,7 @@ class SupervisorOrchestrator:
                 else:
                     print(f"Agent not found: {agent_name}")
 
-                    # Step 3: Handle different result scenarios
-            
+            # Step 3: Handle different result scenarios
             elif action_type == "parallel_group":
                 # Ensure dependencies are met
                 depends_on = action.get('depends_on', [])
@@ -373,6 +491,7 @@ class SupervisorOrchestrator:
         elif len(specialist_responses) == 1 and 'response' in specialist_responses[0]:
             final_response = specialist_responses[0]['response']
             response_source = specialist_responses[0]['agent']
+            self.last_active_agent[session_id] = specialist_responses[0].get('agent')
 
         # Case 3: Multiple specialist responses needing synthesis
         elif len(specialist_responses) > 1:
