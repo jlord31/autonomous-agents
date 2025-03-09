@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 # Import our custom components
 from orchestrator.supervisor_orchestrator import SupervisorOrchestrator
 from utils.CreateLLMAgents import load_llm_agents
-from utils.CreateToolAgent import ToolAgent
 from multi_agent_orchestrator.agents import BedrockLLMAgent, BedrockLLMAgentOptions
 from multi_agent_orchestrator.types import ConversationMessage, ParticipantRole
 from tools.registry.index import get_tool_configs
@@ -76,6 +75,12 @@ async def main():
         {
             "name": "math_assistant",  
             "description": "Performs mathematical calculations including arithmetic operations, equations, and unit conversions",
+            "system_prompt": "You are a math assistant with access to calculator tools. \
+                IMPORTANT: To perform calculations, you MUST use the provided tools. \
+                Never calculate manually. Format tool calls exactly as: \
+                TOOL_CALL[calculator]TOOL_INPUT{\"operation\": \"multiply\", \"numbers\": [28749, 1823]}TOOL_CALL_END \
+                Available tool operations: add, subtract, multiply, divide \
+            ",
             "model_id": MODEL_ID,
             "streaming": False,
             "tools": calculator_tools  
@@ -83,9 +88,33 @@ async def main():
         {
             "name": "email_assistant",
             "description": "Helps you compose and send emails, manage communication, and draft professional correspondence",
-            "model_id": MODEL_ID,
-            "streaming": False,
-            "tools": [email_tool] if email_tool else []
+            "system_prompt": """You are an email assistant that can help users compose and send emails.
+
+                IMPORTANT: You have access to a send_email tool. To send emails, you MUST use this tool.
+                DO NOT pretend to send emails without using the tool.
+
+                When ready to send an email, use EXACTLY this format:
+                TOOL_CALL[send_email]TOOL_INPUT{"to_email": "recipient@example.com", "subject": "Subject line", "body": "Email content"}TOOL_CALL_END
+
+                Steps for email handling:
+                1. Help user compose the email (recipient, subject, body)
+                2. Show the draft and confirm with user before sending
+                3. ONLY after user confirmation, call the send_email tool with proper parameters
+                4. Report the result of the sending operation to the user
+
+                Example of correct tool usage:
+                User: Send an email to joe@example.com with subject "Meeting"
+                You: Let me draft that for you. How about this? [Draft email]
+                User: Looks good, please send it
+                You: I'll send it now. 
+                TOOL_CALL[send_email]TOOL_INPUT{"to_email": "joe@example.com", "subject": "Meeting", "body": "Dear Joe..."}TOOL_CALL_END
+                Email sent successfully!
+
+                Never claim you have sent an email if you haven't used the send_email tool.
+            """,
+                "model_id": MODEL_ID,
+                "tools": [{"name": "send_email", "module": "tools.email", "function": "send_email"}]
+            
         }
     ]
     

@@ -121,20 +121,25 @@ class SupervisorOrchestrator:
             return {"reasoning": "Error parsing plan", "actions": []}
     
     def _extract_response_text(self, response: Any) -> str:
-        """Helper to extract text from various response types"""
-        if hasattr(response, 'content') and isinstance(response.content, list):
-            return "".join([
-                content_block.get("text", "") 
-                for content_block in response.content 
-                if isinstance(content_block, dict) and "text" in content_block
-            ])
-        elif hasattr(response, 'output'):
-            return response.output
-        elif isinstance(response, str):
-            return response
-        else:
-            return str(response)
-    
+        """Helper to extract text from various response types with improved error handling"""
+        try:
+            if hasattr(response, 'content') and isinstance(response.content, list):
+                result = ""
+                for content_block in response.content:
+                    # Add defensive checking
+                    if isinstance(content_block, dict) and "text" in content_block and content_block["text"] is not None:
+                        result += content_block["text"]
+                return result
+            elif hasattr(response, 'output'):
+                return response.output if response.output is not None else ""
+            elif isinstance(response, str):
+                return response
+            else:
+                return str(response)
+        except Exception as e:
+            print(f"Error extracting response text: {str(e)}")
+            return "Error extracting response"
+        
     async def _process_agent_request(self, agent_name, query, user_id, session_id, output_var=None):
         """Process a request to a specialist agent for parallel execution"""
         agent = self.agents[agent_name]
@@ -143,13 +148,19 @@ class SupervisorOrchestrator:
         # Add query to agent history
         agent_history.append(ConversationMessage(
             role=ParticipantRole.USER,
-            content=[{"text": query}]
+            content=[{"text": query if query is not None else ""}]  # Add null check
         ))
         
         try:
             print(f"Calling specialist agent (parallel): {agent_name}")
             response = await agent.process_request(query, user_id, session_id, agent_history)
             response_text = self._extract_response_text(response)
+            
+            if response_text:  # Only add if we have text
+                agent_history.append(ConversationMessage(
+                    role=ParticipantRole.ASSISTANT,
+                    content=[{"text": response_text}]
+                ))
             
             # Create response data
             response_data = {
@@ -390,6 +401,7 @@ class SupervisorOrchestrator:
                 
             # Handle specialist agent calls
             elif action_type == "call_specialist":
+                #print(f"DEBUG: Processing query for {agent_name}: {query[:50]}..." if query else "DEBUG: Query is None")
                 agent_name = action.get('agent')
                 query = action.get('query', user_input)
                 output_var = action.get('output_var')
@@ -534,7 +546,8 @@ class SupervisorOrchestrator:
         metadata = {
             "source": response_source,
             "agent_count": len(specialist_responses),
-            "plan": plan.get("reasoning", "No reasoning provided")
+            "plan": plan.get("reasoning", "No reasoning provided"),
+            #"tools_used": ', '.join(tool_calls)
         }
 
         # Return the final response

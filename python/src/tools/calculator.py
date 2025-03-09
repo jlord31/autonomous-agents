@@ -21,6 +21,8 @@ def perform_arithmetic(
     result = numbers[0]
     explanation = f"Starting with {numbers[0]}"
     
+    print(f"🔧 TOOL CALLED: perform_arithmetic({operation}, {numbers})")
+    
     try:
         if operation == "add":
             for num in numbers[1:]:
@@ -44,6 +46,9 @@ def perform_arithmetic(
             return {"result": None, "explanation": f"Unknown operation: {operation}"}
             
         explanation += f" = {result}"
+        
+        print(f"🔧 TOOL RESULT: {result}")
+        
         return {"result": result, "explanation": explanation}
     except Exception as e:
         return {"result": None, "explanation": f"Error: {str(e)}"}

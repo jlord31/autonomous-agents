@@ -21,7 +21,7 @@ from multi_agent_orchestrator.agents import (
 )
 from multi_agent_orchestrator.types import ConversationMessage, ParticipantRole
 
-from custom_classifier import InvokeModelClassifier
+from python.custom_classifier import InvokeModelClassifier
 from utils.BedrockLLMAgentCallbacks import BedrockLLMAgentCallbacks
 
 from dotenv import load_dotenv

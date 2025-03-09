@@ -36,7 +36,6 @@ def load_llm_agents(agent_configs: List[Dict], orchestrator: SupervisorOrchestra
         if "callback_class" in agent_config:
             callback_class_name = agent_config["callback_class"]
             # Dynamically import and instantiate callback class if needed
-            # This is a simple version - you might need to adjust based on your actual callback classes
             if callback_class_name == "BedrockLLMAgentCallbacks":
                 from utils.BedrockLLMAgentCallbacks import BedrockLLMAgentCallbacks
                 agent_options.callbacks = BedrockLLMAgentCallbacks()

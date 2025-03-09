@@ -47,7 +47,7 @@ from multi_agent_orchestrator.types import ConversationMessage, ParticipantRole
     USE_DEFAULT_AGENT_IF_NONE_IDENTIFIED=True,
     MAX_MESSAGE_PAIRS_PER_AGENT=10
 ))  """
-from custom_classifier import DirectInvokeClassifier
+from python.custom_classifier import DirectInvokeClassifier
 from utils.BedrockLLMAgentCallbacks import BedrockLLMAgentCallbacks
 
 # Just remove the CLASSIFIER parameter entirely
