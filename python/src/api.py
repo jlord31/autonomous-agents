@@ -11,7 +11,8 @@ import logging
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from utils.get_bedrock_client import get_bedrock_client
-from utils.redis_client import redis_client, use_redis
+#from utils.redis_client import redis_client, use_redis
+from utils.LRUClient import cache_store
 
 # Import orchestratorHelper functions 
 from utils.orchestrator_helper import (
@@ -187,7 +188,7 @@ def health():
     return {
         "status": "healthy", 
         "timestamp": datetime.now().isoformat(),
-        "using_redis": use_redis
+        "using_redis": len(cache_store.cache)
     }
 
 # Clean up inactive orchestrators periodically

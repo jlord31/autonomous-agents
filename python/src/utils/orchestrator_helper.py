@@ -3,20 +3,21 @@ import json
 import time
 from typing import Dict, List, Optional
 from datetime import datetime
-from utils.get_bedrock_client import get_bedrock_client
-import redis
 import logging
 import os
 
 from orchestrator.supervisor_orchestrator import SupervisorOrchestrator
 from utils.CreateLLMAgents import load_llm_agents
 from multi_agent_orchestrator.agents import BedrockLLMAgent, BedrockLLMAgentOptions
-from utils.redis_client import redis_client, use_redis
+from utils.get_bedrock_client import get_bedrock_client
+from utils.LRUClient import cache_store
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Single orchestrator cache - use this consistently
+# In-memory cache specifically for active orchestrator instances
+# This is separate from the LRU cache because orchestrator instances are complex objects
 orchestrator_cache = {}
 
 # Helpers for orchestrator management
@@ -31,54 +32,24 @@ def store_orchestrator_config(user_id: str, organization_id: str, config: dict) 
         "created_at": datetime.now().isoformat()
     }
     
-    # Store in Redis if available
-    if use_redis:
-        try:
-            # Store the config by ID
-            redis_client.setex(
-                f"orchestrator_config:{config_id}",
-                86400,  # 24 hour TTL
-                json.dumps(config_data)
-            )
-            
-            # Link user to this config
-            redis_client.setex(
-                f"user_orchestrator:{user_id}",
-                86400,  # 24 hour TTL
-                config_id
-            )
-            
-            # If organization provided, link org to this config
-            if organization_id:
-                redis_client.sadd(f"org_users:{organization_id}", user_id)
-                redis_client.expire(f"org_users:{organization_id}", 86400)  # 24 hour TTL
-                
-            logger.info(f"Stored orchestrator config {config_id} in Redis")
-            return config_id
-        except Exception as e:
-            logger.error(f"Redis error: {str(e)}")
-            # Fall back to in-memory if Redis fails
+    # Store configuration in LRU cache
+    cache_store.set(f"orchestrator_config:{config_id}", json.dumps(config_data), ttl=86400)  # 24 hour TTL
     
-    # In-memory fallback
-    if "orchestrator_configs" not in orchestrator_cache:
-        orchestrator_cache["orchestrator_configs"] = {}
+    # Link user to this config
+    cache_store.set(f"user_orchestrator:{user_id}", config_id, ttl=86400)
     
-    orchestrator_cache["orchestrator_configs"][config_id] = config_data
-    
-    # Link user to config
-    if "user_configs" not in orchestrator_cache:
-        orchestrator_cache["user_configs"] = {}
-    orchestrator_cache["user_configs"][user_id] = config_id
-    
-    # Link org to user
+    # If organization provided, link org to this user
     if organization_id:
-        if "org_users" not in orchestrator_cache:
-            orchestrator_cache["org_users"] = {}
-        if organization_id not in orchestrator_cache["org_users"]:
-            orchestrator_cache["org_users"][organization_id] = set()
-        orchestrator_cache["org_users"][organization_id].add(user_id)
+        # Get existing org users or create new list
+        org_users_json = cache_store.get(f"org_users:{organization_id}")
+        org_users = json.loads(org_users_json) if org_users_json else []
+        
+        # Add user if not already in list
+        if user_id not in org_users:
+            org_users.append(user_id)
+            cache_store.set(f"org_users:{organization_id}", json.dumps(org_users), ttl=86400)
     
-    logger.info(f"Stored orchestrator config {config_id} in memory")
+    logger.info(f"Stored orchestrator config {config_id} for user {user_id}")
     return config_id
 
 def get_orchestrator_for_user(user_id: str) -> Optional[SupervisorOrchestrator]:
@@ -90,38 +61,25 @@ def get_orchestrator_for_user(user_id: str) -> Optional[SupervisorOrchestrator]:
         entry["last_accessed"] = time.time()
         return entry["orchestrator"]
     
-    # Get config ID for this user
-    config_id = None
-    if use_redis:
-        try:
-            config_id = redis_client.get(f"user_orchestrator:{user_id}")
-        except Exception as e:
-            logger.error(f"Redis error getting user config: {str(e)}")
-    else:
-        config_id = orchestrator_cache.get("user_configs", {}).get(user_id)
+    # Get config ID from LRU cache
+    config_id = cache_store.get(f"user_orchestrator:{user_id}")
     
     if not config_id:
         logger.warning(f"No config found for user {user_id}")
         return None
         
-    # Get the config by ID
-    config = None
-    if use_redis:
-        try:
-            config_json = redis_client.get(f"orchestrator_config:{config_id}")
-            if config_json:
-                config = json.loads(config_json)
-        except Exception as e:
-            logger.error(f"Redis error getting config: {str(e)}")
-    else:
-        config = orchestrator_cache.get("orchestrator_configs", {}).get(config_id)
+    # Get the config by ID from LRU cache
+    config_json = cache_store.get(f"orchestrator_config:{config_id}")
     
-    if not config:
+    if not config_json:
         logger.warning(f"Config {config_id} not found")
         return None
     
-    # Recreate the orchestrator from config
     try:
+        # Parse the config JSON
+        config = json.loads(config_json)
+        
+        # Recreate the orchestrator from config
         bedrock_runtime = get_bedrock_client()
         
         # Create supervisor agent
@@ -151,8 +109,7 @@ def get_orchestrator_for_user(user_id: str) -> Optional[SupervisorOrchestrator]:
         return None
 
 def store_orchestrator(user_id: str, orchestrator: SupervisorOrchestrator) -> None:
-    """Store an orchestrator instance in the cache"""
-    # Use the consistent cache variable
+    """Store an orchestrator instance in the in-memory cache"""
     orchestrator_cache[user_id] = {
         "orchestrator": orchestrator,
         "last_accessed": time.time()
@@ -179,11 +136,11 @@ def cleanup_inactive_orchestrators(timeout_seconds: int = 3600) -> List[str]:
     # Find inactive orchestrators
     to_remove = []
     for user_id, entry in orchestrator_cache.items():
-        # Skip special keys used for configs
-        if user_id in ["orchestrator_configs", "user_configs", "org_users"]:
+        # Skip any non-orchestrator entries
+        if not isinstance(entry, dict) or "orchestrator" not in entry:
             continue
             
-        if isinstance(entry, dict) and entry.get("last_accessed", 0) < cutoff:
+        if entry.get("last_accessed", 0) < cutoff:
             to_remove.append(user_id)
     
     # Remove them
@@ -193,3 +150,17 @@ def cleanup_inactive_orchestrators(timeout_seconds: int = 3600) -> List[str]:
             logger.info(f"Removed inactive orchestrator for user {user_id}")
     
     return to_remove
+
+def get_users_for_organization(organization_id: str) -> List[str]:
+    """Get all users associated with an organization"""
+    org_users_json = cache_store.get(f"org_users:{organization_id}")
+    if org_users_json:
+        return json.loads(org_users_json)
+    return []
+
+def get_all_active_user_ids() -> List[str]:
+    """Get IDs of all users with active orchestrators"""
+    return [
+        user_id for user_id in orchestrator_cache.keys()
+        if isinstance(orchestrator_cache[user_id], dict) and "orchestrator" in orchestrator_cache[user_id]
+    ]
