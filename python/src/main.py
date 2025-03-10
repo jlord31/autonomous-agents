@@ -17,24 +17,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-region_name=os.environ.get('AWS_REGION', 'eu-west-2')
-
-bedrock = boto3.client('bedrock', 
-                      region_name=os.environ.get('AWS_REGION', 'eu-west-2'))
-
-# List all foundation models available to your account
-response = bedrock.list_foundation_models()
-print("Available models in your region:")
-for model in response['modelSummaries']:
-    print(f"- {model['modelId']}")
-
-# Also print your current environment config
-print("\nCurrent environment config:")
-print(f"MODEL_ID: {os.environ.get('MODEL_ID')}")
-print(f"SUPERVISOR_MODEL_ID: {os.environ.get('SUPERVISOR_MODEL_ID')}")
-print(f"AWS_REGION: {os.environ.get('AWS_REGION')}")
-
-
 # For direct console usage (testing/development)
 async def console_mode():
     """Run the orchestrator in console mode for testing"""
