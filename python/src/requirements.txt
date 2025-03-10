@@ -14,7 +14,7 @@ h11==0.14.0
 idna==3.10
 jmespath==1.0.1
 mpmath==1.3.0
-multi_agent_orchestrator==0.1.9
+multi-agent-orchestrator
 multidict==6.1.0
 numpy==2.2.3
 propcache==0.3.0
