@@ -1,74 +1,3 @@
-# import uuid
-# import os
-# import asyncio
-# import boto3
-# import uvicorn
-# from dotenv import load_dotenv
-
-# # Load environment variables
-# load_dotenv()
-
-# # Import api for FastAPI
-# from api import app
-
-# # For direct console usage (optional)
-# async def console_mode():
-#     """Run the orchestrator in console mode for testing"""
-#     from orchestrator.supervisor_orchestrator import SupervisorOrchestrator
-#     from utils.CreateLLMAgents import load_llm_agents
-#     from multi_agent_orchestrator.agents import BedrockLLMAgent, BedrockLLMAgentOptions
-#     from tools.registry.index import get_tool_configs
-    
-#     # Create components
-#     bedrock_runtime = boto3.client('bedrock-runtime', region_name=os.environ.get('AWS_REGION'))
-#     supervisor_agent = BedrockLLMAgent(BedrockLLMAgentOptions(
-#         name="supervisor", 
-#         model_id=os.environ.get('SUPERVISOR_MODEL_ID'),
-#         client=bedrock_runtime
-#     ))
-#     orchestrator = SupervisorOrchestrator(supervisor_agent)
-    
-#     # Load tools and agents
-#     all_tools = get_tool_configs()
-#     email_tool = next((t for t in all_tools if t["name"] == "send_email"), None)
-#     calculator_tools = [t for t in all_tools if t["name"] == "calculator"]
-    
-#     llm_agent_configs = [
-#         {"name": "tech_agent", "description": "Tech specialist", "model_id": os.environ.get('MODEL_ID')},
-#         {"name": "travel_agent", "description": "Travel specialist", "model_id": os.environ.get('MODEL_ID')},
-#         {"name": "math_assistant", "description": "Math specialist", "model_id": os.environ.get('MODEL_ID'), "tools": calculator_tools},
-#         {"name": "email_assistant", "description": "Email specialist", "model_id": os.environ.get('MODEL_ID'), "tools": [email_tool] if email_tool else []}
-#     ]
-#     load_llm_agents(llm_agent_configs, orchestrator, bedrock_runtime)
-    
-#     # Interactive loop
-#     user_id = "console_user"
-#     session_id = str(uuid.uuid4())
-    
-#     print("Interactive mode - type 'exit' to quit")
-#     while True:
-#         user_input = input("\nYou: ")
-#         if user_input.lower() == 'exit':
-#             break
-            
-#         print("Processing...")
-#         response = await orchestrator.route_request(user_input, user_id, session_id)
-#         print(f"\nResponse: {response.output}")
-#         print(f"(Source: {response.metadata.get('source', 'unknown')})")
-
-# if __name__ == "__main__":
-#     # Check if we should run in API mode or console mode
-#     api_mode = os.environ.get('API_MODE', 'true').lower() == 'true'
-    
-#     if api_mode:
-#         # Start the FastAPI server
-#         print("Starting in API mode")
-#         uvicorn.run(app, host="0.0.0.0", port=8000)
-#     else:
-#         # Run in console mode
-#         print("Starting in console mode")
-#         asyncio.run(console_mode())
-
 import uuid
 import os
 import asyncio
@@ -76,6 +5,7 @@ import boto3
 import uvicorn
 from dotenv import load_dotenv
 import logging
+from api import app
 
 # Load environment variables
 load_dotenv()
@@ -87,8 +17,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Import api for FastAPI
-from api import app
+region_name=os.environ.get('AWS_REGION', 'eu-west-2')
+
+bedrock = boto3.client('bedrock', 
+                      region_name=os.environ.get('AWS_REGION', 'eu-west-2'))
+
+# List all foundation models available to your account
+response = bedrock.list_foundation_models()
+print("Available models in your region:")
+for model in response['modelSummaries']:
+    print(f"- {model['modelId']}")
+
+# Also print your current environment config
+print("\nCurrent environment config:")
+print(f"MODEL_ID: {os.environ.get('MODEL_ID')}")
+print(f"SUPERVISOR_MODEL_ID: {os.environ.get('SUPERVISOR_MODEL_ID')}")
+print(f"AWS_REGION: {os.environ.get('AWS_REGION')}")
+
 
 # For direct console usage (testing/development)
 async def console_mode():
@@ -101,11 +46,13 @@ async def console_mode():
     # Create components
     bedrock_runtime = boto3.client(
         service_name='bedrock-runtime', 
-        region_name=os.environ.get('AWS_REGION', 'us-east-1')
+        region_name=os.environ.get('AWS_REGION', 'eu-west-2')
     )
     
+    # Add the description parameter
     supervisor_agent = BedrockLLMAgent(BedrockLLMAgentOptions(
         name="supervisor", 
+        description="The supervisor that coordinates specialist agents", 
         model_id=os.environ.get('SUPERVISOR_MODEL_ID'),
         client=bedrock_runtime
     ))

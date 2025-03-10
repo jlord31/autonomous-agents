@@ -1,158 +1,3 @@
-# from fastapi import FastAPI, HTTPException
-# from pydantic import BaseModel
-# import uuid
-# import os
-# import boto3
-# import asyncio
-# from typing import Dict, List, Optional
-
-# # Import your existing components
-# from orchestrator.supervisor_orchestrator import SupervisorOrchestrator
-# from utils.CreateLLMAgents import load_llm_agents
-# from multi_agent_orchestrator.agents import BedrockLLMAgent, BedrockLLMAgentOptions
-# from tools.registry.index import get_tool_configs
-
-# # Data models
-# class ChatRequest(BaseModel):
-#     message: str
-#     user_id: str = "default_user"
-#     session_id: Optional[str] = None
-
-# class ChatResponse(BaseModel):
-#     response: str
-#     source: str
-#     metadata: Optional[Dict] = None
-
-# # Create FastAPI app
-# app = FastAPI()
-
-# # Global orchestrator registry
-# orchestrators = {}
-
-# # Create orchestrator for a user
-# # def create_user_orchestrator(user_id: str):
-# #     # Create Bedrock client
-# #     bedrock_runtime = boto3.client(
-# #         service_name='bedrock-runtime',
-# #         region_name=os.environ.get('AWS_REGION', 'eu-west-2')
-# #     )
-    
-# #     # Create supervisor agent
-# #     supervisor_options = BedrockLLMAgentOptions(
-# #         name="supervisor",
-# #         description="The supervisor that coordinates other agents, and give \
-# #         user a unified answer",
-# #         model_id=os.environ.get('SUPERVISOR_MODEL_ID'),
-# #         client=bedrock_runtime,
-# #         streaming=False
-# #     )
-# #     supervisor_agent = BedrockLLMAgent(supervisor_options)
-    
-# #     # Initialize orchestrator
-# #     orchestrator = SupervisorOrchestrator(supervisor_agent)
-    
-# #     # Get tools
-# #     all_tools = get_tool_configs()
-# #     email_tool = next((t for t in all_tools if t["name"] == "send_email"), None)
-# #     calculator_tools = [t for t in all_tools if t["name"] == "calculator"]
-    
-# #     # Create agent configs
-# #     llm_agent_configs = [
-# #         {
-# #             "name": "tech_agent",
-# #             "description": "Specialized in technology areas",
-# #             "model_id": os.environ.get('MODEL_ID'),
-# #             "streaming": False,
-# #         },
-# #         {
-# #             "name": "travel_agent",
-# #             "description": "Helps with travel planning",
-# #             "model_id": os.environ.get('MODEL_ID'),
-# #             "streaming": False,
-# #         },
-# #         {
-# #             "name": "math_assistant",
-# #             "description": "Performs mathematical calculations",
-# #             "model_id": os.environ.get('MODEL_ID'),
-# #             "streaming": False,
-# #             "tools": calculator_tools
-# #         },
-# #         {
-# #             "name": "email_assistant",
-# #             "description": "Helps with emails",
-# #             "model_id": os.environ.get('MODEL_ID'),
-# #             "streaming": False,
-# #             "tools": [email_tool] if email_tool else []
-# #         }
-# #     ]
-    
-# #     # Load agents into orchestrator
-# #     load_llm_agents(llm_agent_configs, orchestrator, bedrock_runtime)
-    
-# #     return orchestrator
-
-# @app.post("/api/setup")
-# async def setup_orchestrator(request: dict):
-#     user_id = request.get("user_id")
-#     agent_configs = request.get("agent_configs")
-    
-#     # Create bedrock client
-#     bedrock_runtime = boto3.client('bedrock-runtime')
-    
-#     # Create supervisor
-#     supervisor_agent = BedrockLLMAgent(BedrockLLMAgentOptions(
-#         name="supervisor",
-#         description="The supervisor that coordinates other agents",
-#         model_id=request.get("supervisor_model_id"),
-#         client=bedrock_runtime
-#     ))
-    
-#     # Initialize orchestrator
-#     orchestrator = SupervisorOrchestrator(supervisor_agent)
-    
-#     # Load user-provided agent configurations
-#     load_llm_agents(agent_configs, orchestrator, bedrock_runtime)
-    
-#     # Store in registry
-#     orchestrators[user_id] = orchestrator
-    
-#     return {"status": "success"}
-
-# @app.post("/api/chat", response_model=ChatResponse)
-# async def chat(request: ChatRequest):
-#     """Process a user chat message"""
-#     try:
-#         # Get or create user orchestrator
-#         if request.user_id not in orchestrators:
-#             orchestrators[request.user_id] = create_user_orchestrator(request.user_id)
-        
-#         orchestrator = orchestrators[request.user_id]
-        
-#         # Use provided session ID or create a new one
-#         session_id = request.session_id if request.session_id else str(uuid.uuid4())
-        
-#         # Process the request through the orchestrator
-#         response = await orchestrator.route_request(
-#             request.message,  
-#             request.user_id,
-#             session_id
-#         )
-        
-#         # Return the formatted response
-#         return {
-#             "response": response.output,
-#             "source": response.metadata.get("source", "unknown"),
-#             "metadata": response.metadata
-#         }
-            
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
-# @app.get("/health")
-# def health():
-#     """Health check endpoint"""
-#     return {"status": "ok"}
-
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -206,7 +51,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with specific origins in production
+    allow_origins=["*"],  #TODO: Joe - restrict this to the frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -239,7 +84,7 @@ def get_bedrock_client():
     """Get or create AWS Bedrock client"""
     return boto3.client(
         service_name='bedrock-runtime',
-        region_name=os.environ.get('AWS_REGION', 'us-east-1')
+        region_name=os.environ.get('AWS_REGION', 'eu-west-2')
     )
 
 # Helpers for orchestrator management
