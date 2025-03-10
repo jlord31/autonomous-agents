@@ -1,6 +1,6 @@
 .env
 *.env
-*.txt
+#*.txt
 # ignore anything from pycache
 **/__pycache__/**
 *.pyc

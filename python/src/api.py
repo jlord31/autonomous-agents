@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uuid
@@ -217,6 +217,36 @@ def get_orchestrator_for_user(user_id: str) -> Optional[SupervisorOrchestrator]:
     except Exception as e:
         logger.error(f"Error recreating orchestrator: {str(e)}")
         return None
+   
+# use for streaming 
+@app.websocket("/ws/{user_id}/{session_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str):
+    await websocket.accept()
+    try:
+        while True:
+            # Receive message from WebSocket
+            data = await websocket.receive_json()
+            message = data.get("message")
+            
+            # Get orchestrator for this user
+            orchestrator = get_orchestrator_for_user(user_id)
+            if not orchestrator:
+                await websocket.send_json({
+                    "error": "No orchestrator found for this user"
+                })
+                continue
+                
+            # Process message
+            response = await orchestrator.route_request(message, user_id, session_id)
+            
+            # Send response
+            await websocket.send_json({
+                "response": response.output,
+                "source": response.metadata.get("source", "unknown"),
+                "metadata": response.metadata
+            })
+    except WebSocketDisconnect:
+        print(f"WebSocket disconnected for user {user_id}")
 
 @app.post("/api/setup", response_model=Dict)
 async def setup_orchestrator(request: SetupRequest):
